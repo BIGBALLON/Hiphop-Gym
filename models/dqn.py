@@ -3,13 +3,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import seaborn as sns
-import pandas as pd
 import numpy as np
 from gym import logger
+from .utils import check_reward, plot_figure
 
-MEMORY_CAPACITY = 2000
-INIT_REPLAY_SIZE = 1000
+MEMORY_CAPACITY = 300
+INIT_REPLAY_SIZE = 1500
 TARGET_UPDATE_ITER = 200
 BATCH_SIZE = 64
 
@@ -29,23 +28,21 @@ class DQN_RAM(nn.Module):
 
 
 class DQNAgent(object):
-    def __init__(self, lr, input_dims, n_actions, agent_name,
+    def __init__(self, lr, input_dims, n_actions, env_name,
                  ckpt_save_path, gamma=0.99, fc1_dims=128, fc2_dims=256):
         self.epsilon = 1.0
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
         self.gamma = gamma
-        # for target updating
         self.learn_iterations = 0
-        # for storing memory
         self.memory_counter = 0
-        # initialize memory
         self.memory = np.zeros((MEMORY_CAPACITY, input_dims * 2 + 2))
         self.score_history = []
         self.n_actions = n_actions
         self.input_dims = input_dims
         self.cur_episode = 0
-        self.agent_name = f"DQN_{agent_name}"
+        self.env_name = env_name
+        self.agent_name = f"PG_{env_name}"
         self.ckpt_save_path = ckpt_save_path
         self.eval_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
         self.target_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
@@ -77,7 +74,10 @@ class DQNAgent(object):
         self.memory_counter += 1
 
     def choose_action(self, observation):
-        pass
+        x = torch.Tensor(observation).to(self.device)
+        actions_value = self.eval_net.forward(x)
+        _, action = torch.max(actions_value, -1)
+        return action.item()
 
     def save_model(self, path, episode):
         torch.save({
@@ -97,19 +97,6 @@ class DQNAgent(object):
         else:
             self.eval_net.train()
 
-    def plot_curve(self):
-        df = pd.DataFrame(dict(episode=np.arange(len(self.score_history)),
-                               score=self.score_history))
-        sns_plot = sns.relplot(
-            x="episode",
-            y="score",
-            kind="line",
-            data=df)
-        figure_name = os.path.join(
-            self.ckpt_save_path, f"{self.agent_name}.png")
-        sns_plot.savefig(figure_name)
-        logger.info(f" == training figure {self.agent_name} saved")
-
     def learn(self):
         self.optimizer.zero_grad()
         sample_index = np.random.choice(MEMORY_CAPACITY, BATCH_SIZE)
@@ -127,12 +114,13 @@ class DQNAgent(object):
         q_next = self.target_net(b_s_).detach()
 
         #  =================== double DQN ===================
-        # q_action = self.eval_net(b_s_).max(1)[1].view(BATCH_SIZE, 1)
-        # q_target = b_r + GAMMA * q_next.gather(1, q_action).view(BATCH_SIZE, 1)   # shape (batch, 1)
+        q_action = self.eval_net(b_s_).max(1)[1].view(BATCH_SIZE, 1)
+        q_target = b_r + self.gamma * \
+            q_next.gather(1, q_action).view(BATCH_SIZE, 1)   # shape (batch, 1)
         #  =================== double DQN ===================
 
         #  =================== DQN ===================
-        q_target = b_r + self.gamma * q_next.max(1)[0].view(BATCH_SIZE, 1)
+        # q_target = b_r + self.gamma * q_next.max(1)[0].view(BATCH_SIZE, 1)
         #  =================== DQN ===================
         loss = self.loss_func(q_eval, q_target)
 
@@ -149,7 +137,7 @@ class DQNAgent(object):
         self.learn_iterations += 1
 
     def train(self, env, episodes):
-        max_score = -10086
+        max_score = -514229
         for eps in range(self.cur_episode, episodes):
             state = env.reset()
             score = 0
@@ -159,16 +147,14 @@ class DQNAgent(object):
                 action = self.predict(state)
                 state_, reward, done, _ = env.step(action)
                 score += reward
-
-                # if done:  # trick for speed up training
-                #     reward = -100
-
+                reward = check_reward(self.env_name, done, reward)
                 self.store_transition(state, action, reward,  state_)
+
                 if self.memory_counter > INIT_REPLAY_SIZE:
                     self.learn()
                 elif self.memory_counter % 100 == 0:
-                    print(
-                        f'Populate the replay buffer: {float(self.memory_counter*100)/INIT_REPLAY_SIZE:.2f}%')
+                    print(f' == populate the replay buffer ... ... ')
+
                 state = state_
 
             episode_step += 1
@@ -186,18 +172,6 @@ class DQNAgent(object):
         ckpt_name = os.path.join(self.ckpt_save_path, "ckpt_final.pth")
         self.save_model(ckpt_name, eps)
         logger.info(f" == model {ckpt_name} saved")
-        self.plot_curve()
-
-    def test(self, env):
-        ob = env.reset()
-        with torch.no_grad():
-            score = 0
-            done = False
-            while not done:
-                # use choose_action instead of predict
-                # choose_action - choose the best action
-                # predict - sample action according to probability
-                action = self.choose_action(ob)
-                ob, reward, done, _ = env.step(action)
-                score += reward
-        logger.info(f" == final score: {score}")
+        figure_name = os.path.join(
+            self.ckpt_save_path, f"{self.agent_name}.png")
+        plot_figure(figure_name, self.score_history)

@@ -3,7 +3,7 @@ import gym
 import os
 import seaborn as sns
 from gym import wrappers, logger
-from models import PGAgent, DQNAgent
+from models import PGAgent, DQNAgent, test_one_episode
 
 sns.set(style="darkgrid")
 
@@ -11,7 +11,7 @@ sns.set(style="darkgrid")
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Reinforcement Learning Algorithm for OpenAI Gym Benchmark")
-    parser.add_argument('--env_name', type=str, default='CartPole-v1',
+    parser.add_argument('--env_name', type=str, default='CartPole-v0',
                         help='Select the environment to run')
     parser.add_argument('--output_path', type=str, default=os.getcwd(),
                         help='Output path for saving records or models')
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         lr=args.lr,
         input_dims=input_dims,
         n_actions=total_actions,
-        agent_name=args.env_name,
+        env_name=args.env_name,
         ckpt_save_path=ckpt_save_path,
         gamma=0.99,
         fc1_dims=128,
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     elif args.mode == "test":
         agent.load_model(args.checkpoint, test=True)
         logger.info(f" == model {args.checkpoint} loaded, start to test")
-        agent.test(env)
+        test_one_episode(agent, env)
     else:
         logger.info(f" == start to train from scratch")
         agent.train(env, args.episodes)
