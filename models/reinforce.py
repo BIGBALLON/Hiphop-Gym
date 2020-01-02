@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from gym import logger
-from .utils import plot_figure
+from .utils import plot_figure, check_reward
 
 
 class PGNet(nn.Module):
@@ -111,20 +111,23 @@ class PGAgent(object):
     def train(self, env, episodes):
         max_score = -514229
         for eps in range(self.cur_episode, episodes):
-            ob = env.reset()
+            state = env.reset()
             score = 0
             done = False
             episode_step = 0
             while not done:
-                action = self.predict(ob)
-                ob, reward, done, _ = env.step(action)
-                self.store_rewards(reward)
-                score += reward
+                action = self.predict(state)
+                state_, reward, done, _ = env.step(action)
                 episode_step += 1
+                score += reward
+                reward = check_reward(
+                    self.env_name, state, action, reward, state_, done, episode_step
+                )
+                self.store_rewards(reward)
 
             self.score_history.append(score)
             max_score = score if score > max_score else max_score
-            if score > -1.0 * episode_step:
+            if score > -2.0 * episode_step:
                 self.learn()
                 logger.info(
                     f" == episode: {eps+1}, score: {score}, max score: {max_score}")

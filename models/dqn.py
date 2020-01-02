@@ -9,7 +9,7 @@ from .utils import check_reward, plot_figure
 
 MEMORY_CAPACITY = 300
 INIT_REPLAY_SIZE = 1500
-TARGET_UPDATE_ITER = 200
+TARGET_UPDATE_ITER = 250
 BATCH_SIZE = 64
 
 
@@ -27,25 +27,74 @@ class DQN_RAM(nn.Module):
         return out
 
 
+class DQN_Dueling_RAM(nn.Module):
+    def __init__(self, input_dims, fc1_dims, fc2_dims, n_actions):
+        super(DQN_Dueling_RAM, self).__init__()
+        self.n_actions = n_actions
+        self.fc1 = nn.Linear(input_dims, fc1_dims)
+
+        self.fc2_adv = nn.Linear(fc1_dims, fc2_dims)
+        self.fc2_val = nn.Linear(fc1_dims, fc2_dims)
+
+        self.fc3_adv = nn.Linear(fc2_dims, n_actions)
+        self.fc3_val = nn.Linear(fc2_dims, 1)
+
+    def forward(self, observation):
+        x = F.relu(self.fc1(observation))
+
+        adv = F.relu(self.fc2_adv(x))
+        val = F.relu(self.fc2_val(x))
+
+        adv = self.fc3_adv(adv)
+        val = self.fc3_val(val)
+
+        # Q(s,a) = V(s) + A(s,a)
+        # improvement:
+        # Q(s,a) = V(s) + (A(s,a) - 1 / |A| sum(A(s,a')))
+        adv_avg = torch.mean(adv, dim=-1, keepdim=True)
+        x = val.expand_as(adv) + (adv - adv_avg)
+        return x
+
+
 class DQNAgent(object):
-    def __init__(self, lr, input_dims, n_actions, env_name,
-                 ckpt_save_path, gamma=0.99, fc1_dims=128, fc2_dims=256):
+    def __init__(self,
+                 lr,
+                 input_dims,
+                 n_actions,
+                 env_name,
+                 ckpt_save_path,
+                 use_double_q=True,
+                 use_dueling=True,
+                 gamma=0.99,
+                 fc1_dims=128,
+                 fc2_dims=256):
         self.epsilon = 1.0
-        self.epsilon_min = 0.001
+        self.epsilon_min = 0.005
         self.epsilon_decay = 0.999
         self.gamma = gamma
+        self.cur_episode = 0
         self.learn_iterations = 0
         self.memory_counter = 0
         self.memory = np.zeros((MEMORY_CAPACITY, input_dims * 2 + 2))
         self.score_history = []
         self.n_actions = n_actions
         self.input_dims = input_dims
-        self.cur_episode = 0
         self.env_name = env_name
+        self.use_double_q = use_double_q
+        self.use_dueling = use_dueling
         self.agent_name = f"PG_{env_name}"
         self.ckpt_save_path = ckpt_save_path
-        self.eval_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
-        self.target_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
+
+        if self.use_dueling:
+            self.eval_net = DQN_Dueling_RAM(
+                input_dims, fc1_dims, fc2_dims, n_actions)
+            self.target_net = DQN_Dueling_RAM(
+                input_dims, fc1_dims, fc2_dims, n_actions)
+        else:
+            self.eval_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
+            self.target_net = DQN_RAM(
+                input_dims, fc1_dims, fc2_dims, n_actions)
+
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
         self.target_net.to(self.device)
@@ -113,15 +162,15 @@ class DQNAgent(object):
         q_eval = self.eval_net(b_s).gather(1, b_a)
         q_next = self.target_net(b_s_).detach()
 
-        #  =================== double DQN ===================
-        q_action = self.eval_net(b_s_).max(1)[1].view(BATCH_SIZE, 1)
-        q_target = b_r + self.gamma * \
-            q_next.gather(1, q_action).view(BATCH_SIZE, 1)   # shape (batch, 1)
-        #  =================== double DQN ===================
+        # use double Q
+        if self.use_double_q:
+            q_action = self.eval_net(b_s_).max(1)[1].view(BATCH_SIZE, 1)
+            q_target = b_r + self.gamma * \
+                q_next.gather(1, q_action).view(BATCH_SIZE, 1)
 
-        #  =================== DQN ===================
-        # q_target = b_r + self.gamma * q_next.max(1)[0].view(BATCH_SIZE, 1)
-        #  =================== DQN ===================
+        else:
+            q_target = b_r + self.gamma * q_next.max(1)[0].view(BATCH_SIZE, 1)
+
         loss = self.loss_func(q_eval, q_target)
 
         self.optimizer.zero_grad()
@@ -146,9 +195,12 @@ class DQNAgent(object):
             while not done:
                 action = self.predict(state)
                 state_, reward, done, _ = env.step(action)
+                episode_step += 1
                 score += reward
-                reward = check_reward(self.env_name, done, reward)
-                self.store_transition(state, action, reward,  state_)
+                reward = check_reward(
+                    self.env_name, state, action, reward, state_, done, episode_step
+                )
+                self.store_transition(state, action, reward, state_)
 
                 if self.memory_counter > INIT_REPLAY_SIZE:
                     self.learn()
@@ -157,7 +209,6 @@ class DQNAgent(object):
 
                 state = state_
 
-            episode_step += 1
             max_score = score if score > max_score else max_score
             self.score_history.append(score)
             logger.info(

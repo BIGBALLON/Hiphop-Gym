@@ -1,12 +1,8 @@
 import argparse
 import gym
 import os
-import seaborn as sns
 from gym import wrappers, logger
 from models import PGAgent, DQNAgent, test_one_episode
-
-sns.set(style="darkgrid")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
