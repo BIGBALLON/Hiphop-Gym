@@ -8,11 +8,13 @@ from gym import logger
 sns.set(style="darkgrid")
 
 
-def check_reward(env, state, action, reward, state_, done, episode_step):
+def check_reward(env, state, action, reward, state_, done):
     if("CartPole" in env):
         return trick_for_cartpole(done, reward)
     elif("MountainCar-v0" in env):
-        return trick_for_mountaincar(state, done, reward, state_, episode_step)
+        return trick_for_mountaincar(state, done, reward, state_)
+    elif("Acrobot-v1" in env):
+        return trick_for_acrobot(state, done, reward, state_)
 
 
 def trick_for_cartpole(done, reward):
@@ -26,7 +28,7 @@ def trick_for_cartpole(done, reward):
     return reward
 
 
-def trick_for_mountaincar(state, done, reward, state_, episode_step):
+def trick_for_mountaincar(state, done, reward, state_):
     """
     -1 for each time step, until the goal position of 0.5 is reached. 
     As with MountainCarContinuous v0, there is no penalty for climbing the left hill, 
@@ -35,6 +37,22 @@ def trick_for_mountaincar(state, done, reward, state_, episode_step):
     state[1] velocity:  -0.07 ~ 0.07
     """
     return abs(state_[1])
+
+
+def trick_for_acrobot(state, done, reward, state_):
+    """
+    TBD
+    """
+    rewardx = (-np.cos(state_[0]) - np.cos(state_[1] + state_[0]))
+    if rewardx < .5:
+        reward = -1.
+    if (rewardx > .5 and rewardx < .8):
+        reward = -0.8
+    if rewardx > .8:
+        reward = -0.6
+    if rewardx > 1:
+        reward = -0.4
+    return reward
 
 
 def test_one_episode(agent, env):

@@ -110,6 +110,7 @@ class PGAgent(object):
 
     def train(self, env, episodes):
         max_score = -514229
+        total_step = 0
         for eps in range(self.cur_episode, episodes):
             state = env.reset()
             score = 0
@@ -119,9 +120,10 @@ class PGAgent(object):
                 action = self.predict(state)
                 state_, reward, done, _ = env.step(action)
                 episode_step += 1
+                total_step += 1
                 score += reward
                 reward = check_reward(
-                    self.env_name, state, action, reward, state_, done, episode_step
+                    self.env_name, state, action, reward, state_, done
                 )
                 self.store_rewards(reward)
 

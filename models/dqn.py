@@ -7,10 +7,12 @@ import numpy as np
 from gym import logger
 from .utils import check_reward, plot_figure
 
-MEMORY_CAPACITY = 10000
-INIT_REPLAY_SIZE = 5000
+MEMORY_CAPACITY = 2500
+INIT_REPLAY_SIZE = 1250
 TARGET_UPDATE_ITER = 250
 BATCH_SIZE = 64
+EPSILON_FINAL = 0.005
+EPSILON_DECAY = 0.99
 
 
 class DQN_RAM(nn.Module):
@@ -30,7 +32,6 @@ class DQN_RAM(nn.Module):
 class DQN_Dueling_RAM(nn.Module):
     def __init__(self, input_dims, fc1_dims, fc2_dims, n_actions):
         super(DQN_Dueling_RAM, self).__init__()
-        self.n_actions = n_actions
         self.fc1 = nn.Linear(input_dims, fc1_dims)
 
         self.fc2_adv = nn.Linear(fc1_dims, fc2_dims)
@@ -66,11 +67,10 @@ class DQNAgent(object):
                  use_double_q=True,
                  use_dueling=True,
                  gamma=0.99,
-                 fc1_dims=128,
+                 fc1_dims=256,
                  fc2_dims=256):
         self.epsilon = 1.0
-        self.epsilon_min = 0.005
-        self.epsilon_decay = 0.999
+        self.EPSILON_FINAL = 0.005
         self.gamma = gamma
         self.cur_episode = 0
         self.learn_iterations = 0
@@ -178,34 +178,35 @@ class DQNAgent(object):
         nn.utils.clip_grad_value_(self.eval_net.parameters(), 1.0)
         self.optimizer.step()
 
-        if self.epsilon > self.epsilon_min:
-            self.epsilon = self.epsilon * self.epsilon_decay
+        if self.epsilon > EPSILON_FINAL:
+            self.epsilon = self.epsilon * EPSILON_DECAY
 
         # target parameter update
         if self.learn_iterations % TARGET_UPDATE_ITER == 0:
             self.target_net.load_state_dict(self.eval_net.state_dict())
+            logger.info(f" == update targe network")
         self.learn_iterations += 1
 
     def train(self, env, episodes):
         max_score = -514229
+        total_step = 0
         for eps in range(self.cur_episode, episodes):
             state = env.reset()
             score = 0
             done = False
-            episode_step = 0
             while not done:
                 action = self.predict(state)
                 state_, reward, done, _ = env.step(action)
-                episode_step += 1
+                total_step += 1
                 score += reward
                 reward = check_reward(
-                    self.env_name, state, action, reward, state_, done, episode_step
+                    self.env_name, state, action, reward, state_, done
                 )
                 self.store_transition(state, action, reward, state_)
 
                 if self.memory_counter > INIT_REPLAY_SIZE:
                     self.learn()
-                elif self.memory_counter % 100 == 0:
+                elif self.memory_counter % 500 == 0:
                     print(f' == populate the replay buffer ... ... ')
 
                 state = state_
@@ -213,7 +214,7 @@ class DQNAgent(object):
             max_score = score if score > max_score else max_score
             self.score_history.append(score)
             logger.info(
-                f" == episode: {eps+1}, score: {score}, max score: {max_score}")
+                f" == episode: {eps+1}, total step: {total_step}, score: {score}, max score: {max_score}")
 
             if (eps + 1) % 100 == 0:
                 ckpt_name = os.path.join(
