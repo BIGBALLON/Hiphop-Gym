@@ -3,6 +3,7 @@ import gym
 import os
 from gym import wrappers, logger
 from models import PGAgent, DQNAgent, test_one_episode
+from atari_wrappers import wrap_deepmind
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     os.makedirs(ckpt_save_path, exist_ok=True)
 
     env = gym.make(args.env_name)
+    env = wrap_deepmind(env)
 
     # seed for reproducible random numbers
     if args.env_seed:
