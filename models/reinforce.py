@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from gym import logger
-from .utils import plot_figure, check_reward
+from .utils import plot_figure, check_reward, discount_reward
 
 
 class PGNet(nn.Module):
@@ -86,13 +86,7 @@ class PGAgent(object):
         self.optimizer.zero_grad()
 
         # Calcualte discount reward G[]
-        cumulate_reward = 0
-        G = np.zeros_like(self.reward_memory, dtype=np.float64)
-        for idx in reversed(range(len(self.reward_memory))):
-            if self.reward_memory[idx] != 0:
-                cumulate_reward = cumulate_reward * \
-                    self.gamma + self.reward_memory[idx]
-                G[idx] = cumulate_reward
+        G = discount_reward(self.reward_memory, self.gamma)
 
         # Normalize
         mean = np.mean(G)
@@ -126,10 +120,11 @@ class PGAgent(object):
                     self.env_name, state, action, reward, state_, done
                 )
                 self.store_rewards(reward)
+                state = state_
 
             self.score_history.append(score)
             max_score = score if score > max_score else max_score
-            if score > -2.0 * episode_step:
+            if score > -1.0 * episode_step:
                 self.learn()
                 logger.info(
                     f" == episode: {eps+1}, score: {score}, max score: {max_score}")

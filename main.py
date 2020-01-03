@@ -53,10 +53,10 @@ if __name__ == '__main__':
             env,
             directory=record_save_path,
             video_callable=lambda count: (count) % 100 == 0,
-            force=True
+            # force=True
         )
 
-    agent = DQNAgent(
+    agent = PGAgent(
         lr=args.lr,
         input_dims=input_dims,
         n_actions=total_actions,

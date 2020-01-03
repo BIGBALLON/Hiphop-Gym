@@ -70,7 +70,6 @@ class DQNAgent(object):
                  fc1_dims=256,
                  fc2_dims=256):
         self.epsilon = 1.0
-        self.EPSILON_FINAL = 0.005
         self.gamma = gamma
         self.cur_episode = 0
         self.learn_iterations = 0

@@ -8,6 +8,17 @@ from gym import logger
 sns.set(style="darkgrid")
 
 
+def discount_reward(reward_memory, gamma):
+    cumulate_reward = 0
+    G = np.zeros_like(reward_memory)
+    for idx in reversed(range(len(reward_memory))):
+        if reward_memory[idx] != 0:
+            cumulate_reward = cumulate_reward * \
+                gamma + reward_memory[idx]
+            G[idx] = cumulate_reward
+    return G
+
+
 def check_reward(env, state, action, reward, state_, done):
     if("CartPole" in env):
         return trick_for_cartpole(done, reward)
