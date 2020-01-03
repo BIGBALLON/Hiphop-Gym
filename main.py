@@ -40,11 +40,11 @@ if __name__ == '__main__':
     if args.env_seed:
         env.seed(args.env_seed)
 
-    assert isinstance(
-        env.action_space, gym.spaces.discrete.Discrete
-    ), f"REINFORCE is only for discrete task"
+    if isinstance(env.action_space, gym.spaces.discrete.Discrete):
+        total_actions = env.action_space.n
+    elif isinstance(env.action_space, gym.spaces.box.Box):
+        total_actions = env.action_space.shape[0]
 
-    total_actions = env.action_space.n
     input_dims = env.observation_space.shape[0]
     logger.info(f" == action space: {env.action_space}")
     logger.info(f" == observation space: {env.observation_space}")

@@ -7,9 +7,9 @@ import numpy as np
 from gym import logger
 from .utils import check_reward, plot_figure, weight_init
 
-MEMORY_CAPACITY = 2500
-INIT_REPLAY_SIZE = 1250
-TARGET_UPDATE_ITER = 250
+MEMORY_CAPACITY = 10000
+INIT_REPLAY_SIZE = 5000
+TARGET_UPDATE_ITER = 1000
 BATCH_SIZE = 64
 EPSILON_FINAL = 0.005
 EPSILON_DECAY = 0.99
@@ -57,6 +57,25 @@ class DQN_Dueling_RAM(nn.Module):
         return x
 
 
+class DQN(nn.Module):
+    def __init__(self, in_channels, n_actions):
+        super(DQN, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, 3, stride=1)
+        self.fc1 = nn.Linear(64 * 8 * 8, 512)
+        self.fc2 = nn.Linear(512, n_actions)
+
+    def forward(self, observation):
+        x = F.relu(self.conv1(observation))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        out = self.f2c(x)
+        return out
+
+
 class DQNAgent(object):
     def __init__(self,
                  lr,
@@ -66,6 +85,7 @@ class DQNAgent(object):
                  ckpt_save_path,
                  use_double_q=True,
                  use_dueling=True,
+                 use_ram=True,
                  gamma=0.99,
                  fc1_dims=256,
                  fc2_dims=256):
@@ -80,19 +100,21 @@ class DQNAgent(object):
         self.input_dims = input_dims
         self.env_name = env_name
         self.use_double_q = use_double_q
-        self.use_dueling = use_dueling
         self.agent_name = f"DQN_{env_name}"
         self.ckpt_save_path = ckpt_save_path
-
-        if self.use_dueling:
-            self.eval_net = DQN_Dueling_RAM(
-                input_dims, fc1_dims, fc2_dims, n_actions)
-            self.target_net = DQN_Dueling_RAM(
-                input_dims, fc1_dims, fc2_dims, n_actions)
+        if use_ram:
+            if use_dueling:
+                self.eval_net = DQN_Dueling_RAM(
+                    input_dims, fc1_dims, fc2_dims, n_actions)
+                self.target_net = DQN_Dueling_RAM(
+                    input_dims, fc1_dims, fc2_dims, n_actions)
+            else:
+                self.eval_net = DQN_RAM(
+                    input_dims, fc1_dims, fc2_dims, n_actions)
+                self.target_net = DQN_RAM(
+                    input_dims, fc1_dims, fc2_dims, n_actions)
         else:
-            self.eval_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
-            self.target_net = DQN_RAM(
-                input_dims, fc1_dims, fc2_dims, n_actions)
+            pass
         self.eval_net.apply(weight_init)
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')

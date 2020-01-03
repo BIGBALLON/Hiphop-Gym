@@ -9,6 +9,11 @@ from gym import logger
 sns.set(style="darkgrid")
 
 
+class ReplayBuffer(object):
+    def __init__(self):
+        self.max_size = 0
+
+
 def discount_reward(reward_memory, gamma):
     cumulate_reward = 0
     G = np.zeros_like(reward_memory)
