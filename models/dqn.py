@@ -7,8 +7,8 @@ import numpy as np
 from gym import logger
 from .utils import check_reward, plot_figure
 
-MEMORY_CAPACITY = 3000
-INIT_REPLAY_SIZE = 1500
+MEMORY_CAPACITY = 10000
+INIT_REPLAY_SIZE = 5000
 TARGET_UPDATE_ITER = 250
 BATCH_SIZE = 64
 
@@ -175,6 +175,7 @@ class DQNAgent(object):
 
         self.optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_value_(self.eval_net.parameters(), 1.0)
         self.optimizer.step()
 
         if self.epsilon > self.epsilon_min:
