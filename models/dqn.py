@@ -7,7 +7,7 @@ import numpy as np
 from gym import logger
 from .utils import check_reward, plot_figure
 
-MEMORY_CAPACITY = 300
+MEMORY_CAPACITY = 3000
 INIT_REPLAY_SIZE = 1500
 TARGET_UPDATE_ITER = 250
 BATCH_SIZE = 64
