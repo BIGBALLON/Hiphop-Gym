@@ -1,17 +1,64 @@
 
 import torch
+import random
 import torch.nn as nn
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import pickle
 from gym import logger
 
 sns.set(style="darkgrid")
 
 
 class ReplayBuffer(object):
-    def __init__(self):
-        self.max_size = 0
+    def __init__(self, max_size):
+        self.max_size = max_size
+        self.size = 0
+        self.buffer = []
+
+    def add(self, s, a, r, t, s_):
+        experience = (s, a, r, t, s_)
+        if self.size < self.max_size:
+            self.buffer.append(experience)
+            self.size += 1
+        else:
+            self.buffer.pop(0)
+            self.buffer.append(experience)
+
+    def len(self):
+        return self.size
+
+    def sample_batch(self, batch_size):
+        if self.size < batch_size:
+            batch = random.sample(self.buffer, self.size)
+        else:
+            batch = random.sample(self.buffer, batch_size)
+
+        batch_s = np.array([_[0] for _ in batch])
+        batch_a = np.array([_[1] for _ in batch])
+        batch_r = np.array([_[2] for _ in batch])
+        batch_t = np.array([_[3] for _ in batch])
+        batch_s_ = np.array([_[4] for _ in batch])
+
+        return batch_s, batch_a, batch_r, batch_t, batch_s_
+
+    def clear(self):
+        self.buffer = []
+        self.size = 0
+
+    def save(self):
+        file = open('replay_buffer.pkl', 'wb')
+        pickle.dump(self.buffer, file)
+        file.close()
+
+    def load(self):
+        try:
+            filehandler = open('replay_buffer.pkl', 'rb')
+            self.buffer = pickle.load(filehandler)
+            self.size = len(self.buffer)
+        except:
+            print(f"no file is loaded")
 
 
 def discount_reward(reward_memory, gamma):
@@ -41,6 +88,8 @@ def check_reward(env, state, action, reward, state_, done):
         return trick_for_mountaincar(state, done, reward, state_)
     elif("Acrobot-v1" in env):
         return trick_for_acrobot(state, done, reward, state_)
+    else:
+        return reward
 
 
 def trick_for_cartpole(done, reward):

@@ -6,10 +6,11 @@ import torch.nn.functional as F
 import numpy as np
 from gym import logger
 from .utils import check_reward, plot_figure, weight_init
+from .utils import ReplayBuffer
 
-MEMORY_CAPACITY = 10000
-INIT_REPLAY_SIZE = 5000
-TARGET_UPDATE_ITER = 1000
+MEMORY_CAPACITY = 2500
+INIT_REPLAY_SIZE = 1250
+TARGET_UPDATE_ITER = 250
 BATCH_SIZE = 64
 EPSILON_FINAL = 0.005
 EPSILON_DECAY = 0.99
@@ -61,9 +62,9 @@ class DQN(nn.Module):
     def __init__(self, in_channels, n_actions):
         super(DQN, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, 3, stride=1)
-        self.fc1 = nn.Linear(64 * 8 * 8, 512)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.fc1 = nn.Linear(64 * 24 * 16, 512)
         self.fc2 = nn.Linear(512, n_actions)
 
     def forward(self, observation):
@@ -93,8 +94,7 @@ class DQNAgent(object):
         self.gamma = gamma
         self.cur_episode = 0
         self.learn_iterations = 0
-        self.memory_counter = 0
-        self.memory = np.zeros((MEMORY_CAPACITY, input_dims * 2 + 2))
+        self.buffer = ReplayBuffer(MEMORY_CAPACITY)
         self.score_history = []
         self.n_actions = n_actions
         self.input_dims = input_dims
@@ -113,8 +113,13 @@ class DQNAgent(object):
                     input_dims, fc1_dims, fc2_dims, n_actions)
                 self.target_net = DQN_RAM(
                     input_dims, fc1_dims, fc2_dims, n_actions)
+
         else:
-            pass
+            self.eval_net = DQN(
+                3, n_actions)
+            self.target_net = DQN(
+                3, n_actions)
+            print(self.target_net)
         self.eval_net.apply(weight_init)
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -135,13 +140,6 @@ class DQNAgent(object):
         else:                                             # random
             action = np.random.randint(0, self.n_actions)
         return action
-
-    def store_transition(self, s, a, r, s_):
-        transition = np.hstack((s, a, r, s_))
-        # replace the old memory with new memory
-        index = self.memory_counter % MEMORY_CAPACITY
-        self.memory[index, :] = transition
-        self.memory_counter += 1
 
     def choose_action(self, observation):
         x = torch.Tensor(observation).to(self.device)
@@ -168,29 +166,27 @@ class DQNAgent(object):
             self.eval_net.train()
 
     def learn(self):
+        batch_s, batch_a, batch_r, batch_t, batch_s_ = self.buffer.sample_batch(
+            BATCH_SIZE)
         self.optimizer.zero_grad()
-        sample_index = np.random.choice(MEMORY_CAPACITY, BATCH_SIZE)
-        b_memory = self.memory[sample_index, :]
 
-        b_s = torch.FloatTensor(b_memory[:, :self.input_dims]).to(self.device)
-        b_a = torch.LongTensor(
-            b_memory[:, self.input_dims:self.input_dims+1].astype(int)).to(self.device)
-        b_r = torch.FloatTensor(
-            b_memory[:, self.input_dims+1:self.input_dims+2]).to(self.device)
-        b_s_ = torch.FloatTensor(
-            b_memory[:, -self.input_dims:]).to(self.device)
+        batch_s = torch.Tensor(batch_s).to(self.device)
+        batch_a = torch.LongTensor(batch_a).to(self.device)
+        batch_r = torch.FloatTensor(batch_r).to(self.device)
+        batch_s_ = torch.Tensor(batch_s_).to(self.device)
 
-        q_eval = self.eval_net(b_s).gather(1, b_a)
-        q_next = self.target_net(b_s_).detach()
+        q_eval = self.eval_net(batch_s).gather(1, batch_a.view(-1, 1))
+        q_next = self.target_net(batch_s_).detach()
 
         # use double Q
         if self.use_double_q:
-            q_action = self.eval_net(b_s_).max(1)[1].view(BATCH_SIZE, 1)
-            q_target = b_r + self.gamma * \
+            q_action = self.eval_net(batch_s_).max(1)[1].view(BATCH_SIZE, 1)
+            q_target = batch_r + self.gamma * \
                 q_next.gather(1, q_action).view(BATCH_SIZE, 1)
 
         else:
-            q_target = b_r + self.gamma * q_next.max(1)[0].view(BATCH_SIZE, 1)
+            q_target = batch_r + self.gamma * \
+                q_next.max(1)[0].view(BATCH_SIZE, 1)
 
         loss = self.loss_func(q_eval, q_target)
 
@@ -223,13 +219,12 @@ class DQNAgent(object):
                 reward = check_reward(
                     self.env_name, state, action, reward, state_, done
                 )
-                self.store_transition(state, action, reward, state_)
+                self.buffer.add(state, action, reward, done, state_)
 
-                if self.memory_counter > INIT_REPLAY_SIZE:
+                if self.buffer.size > INIT_REPLAY_SIZE:
                     self.learn()
-                elif self.memory_counter % 500 == 0:
+                elif self.buffer.size % 500 == 0:
                     print(f' == populate the replay buffer ... ... ')
-
                 state = state_
 
             max_score = score if score > max_score else max_score

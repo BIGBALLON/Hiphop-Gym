@@ -17,7 +17,7 @@ if __name__ == '__main__':
                         help='Seed for environment')
     parser.add_argument('--episodes', type=int, default=1000,
                         help='Episode for training')
-    parser.add_argument('--lr', type=float, default=5e-4,
+    parser.add_argument('--lr', type=float, default=1e-3,
                         help='Learning rate for training')
     parser.add_argument('--checkpoint', default='',
                         help='Checkpoint for resume or testing')
