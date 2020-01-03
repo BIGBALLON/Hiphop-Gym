@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from gym import logger
-from .utils import plot_figure, check_reward, discount_reward
+from .utils import plot_figure, check_reward, discount_reward, weight_init
 
 
 class PGNet(nn.Module):
@@ -34,6 +34,7 @@ class PGAgent(object):
         self.agent_name = f"PG_{env_name}"
         self.ckpt_save_path = ckpt_save_path
         self.actor = PGNet(input_dims, fc1_dims, fc2_dims, n_actions)
+        self.actor.apply(weight_init)
         self.optimizer = optim.Adam(self.actor.parameters(), lr=lr)
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')

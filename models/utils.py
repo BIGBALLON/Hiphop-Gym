@@ -1,5 +1,6 @@
 
 import torch
+import torch.nn as nn
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -17,6 +18,15 @@ def discount_reward(reward_memory, gamma):
                 gamma + reward_memory[idx]
             G[idx] = cumulate_reward
     return G
+
+
+def weight_init(m):
+    """
+    orthogonal initialize for better performance
+    """
+    if isinstance(m, (nn.Conv2d, nn.Linear)):
+        nn.init.orthogonal_(m.weight)
+        # nn.init.kaiming_normal_(m.weight.data)
 
 
 def check_reward(env, state, action, reward, state_, done):

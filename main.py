@@ -56,7 +56,7 @@ if __name__ == '__main__':
             # force=True
         )
 
-    agent = PGAgent(
+    agent = DQNAgent(
         lr=args.lr,
         input_dims=input_dims,
         n_actions=total_actions,

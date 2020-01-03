@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from gym import logger
-from .utils import check_reward, plot_figure
+from .utils import check_reward, plot_figure, weight_init
 
 MEMORY_CAPACITY = 2500
 INIT_REPLAY_SIZE = 1250
@@ -81,7 +81,7 @@ class DQNAgent(object):
         self.env_name = env_name
         self.use_double_q = use_double_q
         self.use_dueling = use_dueling
-        self.agent_name = f"PG_{env_name}"
+        self.agent_name = f"DQN_{env_name}"
         self.ckpt_save_path = ckpt_save_path
 
         if self.use_dueling:
@@ -93,7 +93,7 @@ class DQNAgent(object):
             self.eval_net = DQN_RAM(input_dims, fc1_dims, fc2_dims, n_actions)
             self.target_net = DQN_RAM(
                 input_dims, fc1_dims, fc2_dims, n_actions)
-
+        self.eval_net.apply(weight_init)
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
         self.target_net.to(self.device)
