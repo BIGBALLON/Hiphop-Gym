@@ -64,7 +64,7 @@ class DQN(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-        self.fc1 = nn.Linear(64 * 24 * 16, 512)
+        self.fc1 = nn.Linear(64 * 22 * 16, 512)
         self.fc2 = nn.Linear(512, n_actions)
 
     def forward(self, observation):
@@ -73,7 +73,7 @@ class DQN(nn.Module):
         x = F.relu(self.conv3(x))
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
-        out = self.f2c(x)
+        out = self.fc2(x)
         return out
 
 
@@ -86,7 +86,7 @@ class DQNAgent(object):
                  ckpt_save_path,
                  use_double_q=True,
                  use_dueling=True,
-                 use_ram=True,
+                 use_ram=False,
                  gamma=0.99,
                  fc1_dims=256,
                  fc2_dims=256):
@@ -219,7 +219,8 @@ class DQNAgent(object):
                 reward = check_reward(
                     self.env_name, state, action, reward, state_, done
                 )
-                self.buffer.add(state, action, reward, done, state_)
+                self.buffer.add(
+                    np.transpose(state, (2, 0, 1)), action, reward, done, np.transpose(state_, (2, 0, 1)))
 
                 if self.buffer.size > INIT_REPLAY_SIZE:
                     self.learn()
