@@ -12,8 +12,8 @@ MEMORY_CAPACITY = 100000
 INIT_REPLAY_SIZE = 50000
 TARGET_UPDATE_ITER = 1000
 BATCH_SIZE = 64
-EPSILON_FINAL = 0.005
-EPSILON_DECAY = 0.99
+EPSILON_FINAL = 0.01
+EPSILON_DECAY = 0.999
 
 
 class DQN_RAM(nn.Module):
@@ -89,9 +89,9 @@ class DQNAgent(object):
                  n_actions,
                  env_name,
                  ckpt_save_path,
-                 use_double_q=False,
+                 use_double_q=True,
                  use_dueling=True,
-                 use_ram=False,
+                 use_ram=True,
                  gamma=0.99,
                  fc1_dims=256,
                  fc2_dims=256):
@@ -135,17 +135,18 @@ class DQNAgent(object):
         return self.agent_name
 
     def predict(self, observation):
-        x = observation.to(self.device)
-        if np.random.uniform() > self.epsilon:            # greedy
-            actions_value = self.eval_net.forward(x)
-            _, action = torch.max(actions_value, -1)
-            return action.item()
-        else:                                             # random
-            action = np.random.randint(0, self.n_actions)
+        x = torch.tensor(observation).to(self.device)
+        with torch.no_grad():
+            if np.random.uniform() > self.epsilon:            # greedy
+                actions_value = self.eval_net.forward(x)
+                _, action = torch.max(actions_value, -1)
+                return action.item()
+            else:                                             # random
+                action = np.random.randint(0, self.n_actions)
         return action
 
     def choose_action(self, observation):
-        x = torch.Tensor(observation).to(self.device)
+        x = torch.tensor(observation).to(self.device)
         actions_value = self.eval_net.forward(x)
         _, action = torch.max(actions_value, -1)
         return action.item()
@@ -173,23 +174,29 @@ class DQNAgent(object):
             BATCH_SIZE)
         self.optimizer.zero_grad()
 
-        batch_s = torch.cat(batch_s).to(self.device)
+        batch_s = torch.FloatTensor(batch_s).to(self.device)
         batch_a = torch.LongTensor(batch_a).to(self.device)
         batch_r = torch.FloatTensor(batch_r).to(self.device)
-        batch_s_ = torch.cat(batch_s_).to(self.device)
+        batch_s_ = torch.FloatTensor(batch_s_).to(self.device)
 
-        q_eval = self.eval_net(batch_s).gather(1, batch_a.view(-1, 1))
+        q_eval = self.eval_net(batch_s).gather(1, batch_a.view((-1, 1)))
+        # print(f"q_eval {q_eval.shape}", )
         q_next = self.target_net(batch_s_).detach()
+        # print(f"q_next {q_next.shape}", )
 
         # use double Q
         if self.use_double_q:
-            q_action = self.eval_net(batch_s_).max(1)[1].view(-1, 1)
-            q_target = batch_r + self.gamma * q_next.gather(1, q_action)
+            q_action = self.eval_net(batch_s_).max(1)[1]
+            # print(f"q_action {q_action.shape}")
+            q_target = batch_r.view((-1, 1)) + self.gamma * \
+                q_next.gather(1, q_action.view((-1, 1)))
+            # print(f"batch_r {batch_r.shape}")
+            # print(f"q_target {q_target.shape}")
 
         else:
             q_target = batch_r + self.gamma * q_next.max(1)[0]
 
-        loss = self.loss_func(q_eval, q_target.view(-1, 1))
+        loss = self.loss_func(q_eval, q_target)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -205,18 +212,11 @@ class DQNAgent(object):
             logger.info(f" == update targe network")
         self.learn_iterations += 1
 
-    def get_state(self, obs):
-        state = np.array(obs)
-        state = state.transpose((2, 0, 1))
-        state = torch.from_numpy(state)
-        return state.unsqueeze(0)
-
     def train(self, env, episodes):
         max_score = -514229
         total_step = 0
         for eps in range(self.cur_episode, episodes):
             state = env.reset()
-            state = self.get_state(state)
             score = 0
             done = False
             while not done:

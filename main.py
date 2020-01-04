@@ -16,7 +16,7 @@ if __name__ == '__main__':
                         help='Optional: [train, resume, test]')
     parser.add_argument('--env_seed', type=int, default=0,
                         help='Seed for environment')
-    parser.add_argument('--episodes', type=int, default=1000,
+    parser.add_argument('--episodes', type=int, default=3000,
                         help='Episode for training')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='Learning rate for training')
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     os.makedirs(ckpt_save_path, exist_ok=True)
 
     env = gym.make(args.env_name)
-    env = wrap_deepmind(env)
+    # env = wrap_deepmind(env)
 
     # seed for reproducible random numbers
     if args.env_seed:
@@ -55,7 +55,7 @@ if __name__ == '__main__':
             env,
             directory=record_save_path,
             video_callable=lambda count: (count) % 100 == 0,
-            # force=True
+            force=True
         )
 
     agent = DQNAgent(

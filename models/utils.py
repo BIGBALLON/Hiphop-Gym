@@ -130,6 +130,14 @@ def trick_for_acrobot(state, done, reward, state_):
     return reward
 
 
+def get_state(obs):
+    # state = np.array(obs)
+    # state = state.transpose((2, 0, 1))
+    # state = torch.from_numpy(state)
+    # return state.unsqueeze(0)
+    return obs
+
+
 def test_one_episode(agent, env):
     ob = env.reset()
     with torch.no_grad():
@@ -139,6 +147,7 @@ def test_one_episode(agent, env):
             # use choose_action instead of predict
             # choose_action - choose the best action
             # predict - sample action according to probability
+            ob = get_state(ob)
             action = agent.choose_action(ob)
             ob, reward, done, _ = env.step(action)
             score += reward
