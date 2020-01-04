@@ -77,8 +77,8 @@ def weight_init(m):
     orthogonal initialize for better performance
     """
     if isinstance(m, (nn.Conv2d, nn.Linear)):
-        nn.init.orthogonal_(m.weight)
-        # nn.init.kaiming_normal_(m.weight.data)
+        # nn.init.orthogonal_(m.weight)
+        nn.init.kaiming_normal_(m.weight.data)
 
 
 def check_reward(env, state, action, reward, state_, done):

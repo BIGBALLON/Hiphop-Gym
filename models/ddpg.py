@@ -11,13 +11,13 @@ from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
 MEMORY_CAPACITY = 100000
-INIT_REPLAY_SIZE = 50000
 TARGET_UPDATE_ITER = 1000
 BATCH_SIZE = 64
 TAU = 0.001
 LR_ACTOR = 0.0001          # learning rate of the actor
 LR_CRITIC = 0.001          # learning rate of the critic
-WEIGHT_DECAY = 0.0005
+EPSILON_FINAL = 0.01
+EPSILON_DECAY = 0.999
 
 
 class Actor(nn.Module):
@@ -82,8 +82,8 @@ class DDPGAgent(object):
                  env_name,
                  ckpt_save_path,
                  gamma=0.99,
-                 fc1_dims=256,
-                 fc2_dims=256):
+                 fc1_dims=512,
+                 fc2_dims=512):
         self.epsilon = 1.0
         self.gamma = gamma
         self.cur_episode = 0
@@ -104,8 +104,9 @@ class DDPGAgent(object):
         print(self.actor_eval)
         print(self.critic_eval)
 
-        self.actor_eval.apply(weight_init)
-        self.critic_eval.apply(weight_init)
+        # self.actor_eval.apply(weight_init)
+        # self.critic_eval.apply(weight_init)
+
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
         self.actor_eval.to(self.device)
@@ -116,7 +117,7 @@ class DDPGAgent(object):
         self.actor_optimizer = optim.Adam(
             self.actor_eval.parameters(), lr=LR_ACTOR)
         self.critic_optimizer = optim.Adam(
-            self.critic_eval.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
+            self.critic_eval.parameters(), lr=LR_CRITIC, weight_decay=1e-4)
         self.actor_loss = nn.MSELoss()
         self.critic_loss = nn.MSELoss()
 
@@ -132,6 +133,7 @@ class DDPGAgent(object):
         self.actor_eval.train()
         if add_noise:
             action += self.noise.sample()
+        action = np.clip(action, -1.0, 1.0)
         return action
 
     # def choose_action(self, observation):
@@ -225,10 +227,8 @@ class DDPGAgent(object):
                 )
                 self.buffer.add(state, action, reward, done, state_)
 
-                if self.buffer.size > INIT_REPLAY_SIZE:
+                if self.buffer.size > BATCH_SIZE:
                     self.learn()
-                elif self.buffer.size % 500 == 0:
-                    print(f' == populate the replay buffer ... ... ')
                 state = state_
 
             max_score = score if score > max_score else max_score

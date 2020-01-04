@@ -65,7 +65,7 @@ if __name__ == '__main__':
         ckpt_save_path=ckpt_save_path,
         gamma=0.99,
         fc1_dims=128,
-        fc2_dims=256
+        fc2_dims=128
     )
 
     if args.mode == "resume":
