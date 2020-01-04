@@ -16,7 +16,7 @@ if __name__ == '__main__':
                         help='Optional: [train, resume, test]')
     parser.add_argument('--env_seed', type=int, default=0,
                         help='Seed for environment')
-    parser.add_argument('--episodes', type=int, default=3000,
+    parser.add_argument('--episodes', type=int, default=1000,
                         help='Episode for training')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='Learning rate for training')
@@ -69,15 +69,13 @@ if __name__ == '__main__':
     )
 
     if args.mode == "resume":
-        # agent.load_model(args.checkpoint)
-        # logger.info(f" == model {args.checkpoint} loaded, continue to train")
-        # agent.train(env, args.episodes)
-        pass
+        agent.load_model(args.checkpoint)
+        logger.info(f" == model {args.checkpoint} loaded, continue to train")
+        agent.train(env, args.episodes)
     elif args.mode == "test":
-        # agent.load_model(args.checkpoint, test=True)
-        # logger.info(f" == model {args.checkpoint} loaded, start to test")
-        # test_one_episode(agent, env)
-        pass
+        agent.load_model(args.checkpoint, test=True)
+        logger.info(f" == model {args.checkpoint} loaded, start to test")
+        test_one_episode(agent, env)
     else:
         logger.info(f" == start to train from scratch")
         agent.train(env, args.episodes)

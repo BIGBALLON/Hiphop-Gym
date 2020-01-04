@@ -16,8 +16,8 @@ BATCH_SIZE = 64
 TAU = 0.001
 LR_ACTOR = 0.0001          # learning rate of the actor
 LR_CRITIC = 0.001          # learning rate of the critic
-EPSILON_FINAL = 0.01
-EPSILON_DECAY = 0.999
+EPSILON_FINAL = 0.001
+EPSILON_DECAY = 0.001
 
 
 class Actor(nn.Module):
@@ -53,12 +53,11 @@ class Critic(nn.Module):
 class OUNoise:
     """Ornstein-Uhlenbeck process."""
 
-    def __init__(self, size, seed, mu=0., theta=0.4, sigma=0.2):
+    def __init__(self, size, mu=0., theta=0.2, sigma=0.2):
         """Initialize parameters and noise process."""
         self.mu = mu * np.ones(size)
         self.theta = theta
         self.sigma = sigma
-        self.seed = random.seed(seed)
         self.reset()
 
     def reset(self):
@@ -99,13 +98,13 @@ class DDPGAgent(object):
         self.actor_target = Actor(state_dims, action_dims)
         self.critic_eval = Critic(state_dims, action_dims)
         self.critic_target = Critic(state_dims, action_dims)
-        self.noise = OUNoise(action_dims, 233)
+        self.noise = OUNoise(action_dims)
 
         print(self.actor_eval)
         print(self.critic_eval)
 
-        # self.actor_eval.apply(weight_init)
-        # self.critic_eval.apply(weight_init)
+        self.actor_eval.apply(weight_init)
+        self.critic_eval.apply(weight_init)
 
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -132,33 +131,45 @@ class DDPGAgent(object):
             action = self.actor_eval(state).cpu().data.numpy()
         self.actor_eval.train()
         if add_noise:
-            action += self.noise.sample()
+            action += max(self.epsilon, EPSILON_FINAL) * self.noise.sample()
+
         action = np.clip(action, -1.0, 1.0)
         return action
 
-    # def choose_action(self, observation):
-    #     x = torch.tensor(observation).to(self.device)
-    #     actions_value = self.actor_eval.forward(x)
-    #     _, action = torch.max(actions_value, -1)
-    #     return action.item()
+    def choose_action(self, state):
+        state = torch.tensor(state).float().to(self.device)
+        self.actor_eval.eval()
+        with torch.no_grad():
+            action = self.actor_eval(state).cpu().data.numpy()
+        return action
 
-    # def save_model(self, path, episode):
-    #     torch.save({
-    #         'model_state_dict': self.actor_eval.state_dict(),
-    #         'optimizer_state_dict': self.optimizer.state_dict(),
-    #         'cur_episode': episode
-    #     }, path)
+    def save_model(self, path, episode):
+        torch.save({
+            'actor_model_state_dict': self.actor_eval.state_dict(),
+            'critic_model_state_dict': self.critic_eval.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+            'cur_episode': episode
+        }, path)
 
-    # def load_model(self, path, test=False):
-    #     checkpoint = torch.load(path)
-    #     self.actor_eval.load_state_dict(checkpoint['model_state_dict'])
-    #     self.optimizer.load_state_dict(
-    #         checkpoint['optimizer_state_dict'])
-    #     self.cur_episode = checkpoint['cur_episode']
-    #     if test:
-    #         self.actor_eval.eval()
-    #     else:
-    #         self.actor_eval.train()
+    def load_model(self, path, test=False):
+        checkpoint = torch.load(path)
+        self.actor_eval.load_state_dict(checkpoint['actor_model_state_dict'])
+        self.critic_eval.load_state_dict(checkpoint['critic_model_state_dict'])
+        self.actor_optimizer.load_state_dict(
+            checkpoint['actor_optimizer_state_dict'])
+        self.critic_optimizer.load_state_dict(
+            checkpoint['critic_optimizer_state_dict'])
+        self.cur_episode = checkpoint['cur_episode']
+        if test:
+            self.actor_eval.eval()
+        else:
+            self.actor_eval.train()
+        self.actor_target.load_state_dict(self.actor_eval.state_dict())
+        self.critic_target.load_state_dict(self.critic_eval.state_dict())
+
+    def decay_epsilon(self):
+        self.epsilon -= EPSILON_DECAY
 
     def learn(self):
         batch_s, batch_a, batch_r, batch_t, batch_s_ = self.buffer.sample_batch(
@@ -217,6 +228,9 @@ class DDPGAgent(object):
             state = env.reset()
             score = 0
             done = False
+
+            self.decay_epsilon()
+
             while not done:
                 action = self.act(state)
                 state_, reward, done, _ = env.step(action)
@@ -229,6 +243,7 @@ class DDPGAgent(object):
 
                 if self.buffer.size > BATCH_SIZE:
                     self.learn()
+
                 state = state_
 
             max_score = score if score > max_score else max_score
@@ -236,15 +251,15 @@ class DDPGAgent(object):
             logger.info(
                 f" == episode: {eps+1}, total step: {total_step}, score: {score}, max score: {max_score}")
 
-            # if (eps + 1) % 100 == 0:
-            #     ckpt_name = os.path.join(
-            #         self.ckpt_save_path, f"ckpt_{eps}.pth")
-            #     self.save_model(ckpt_name, eps)
-            #     logger.info(f" == model {ckpt_name} saved")
+            if (eps + 1) % 100 == 0:
+                ckpt_name = os.path.join(
+                    self.ckpt_save_path, f"ckpt_{eps}.pth")
+                self.save_model(ckpt_name, eps)
+                logger.info(f" == model {ckpt_name} saved")
 
-        # ckpt_name = os.path.join(self.ckpt_save_path, "ckpt_final.pth")
-        # self.save_model(ckpt_name, eps)
-        # logger.info(f" == model {ckpt_name} saved")
+        ckpt_name = os.path.join(self.ckpt_save_path, "ckpt_final.pth")
+        self.save_model(ckpt_name, eps)
+        logger.info(f" == model {ckpt_name} saved")
         figure_name = os.path.join(
             self.ckpt_save_path, f"{self.agent_name}.png")
         plot_figure(figure_name, self.score_history)
