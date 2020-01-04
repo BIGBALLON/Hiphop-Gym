@@ -222,7 +222,6 @@ class DQNAgent(object):
             while not done:
                 action = self.predict(state)
                 state_, reward, done, _ = env.step(action)
-                state_ = self.get_state(state_)
                 total_step += 1
                 score += reward
                 reward = check_reward(
