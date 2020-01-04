@@ -2,7 +2,7 @@ import argparse
 import gym
 import os
 from gym import wrappers, logger
-from models import PGAgent, DQNAgent, test_one_episode
+from models import PGAgent, DQNAgent, test_one_episode, DDPGAgent
 from atari_wrappers import wrap_deepmind
 
 if __name__ == '__main__':
@@ -47,21 +47,20 @@ if __name__ == '__main__':
     elif isinstance(env.action_space, gym.spaces.box.Box):
         total_actions = env.action_space.shape[0]
 
-    input_dims = env.observation_space.shape[0]
+    state_dims = env.observation_space.shape[0]
     logger.info(f" == action space: {env.action_space}")
     logger.info(f" == observation space: {env.observation_space}")
     if args.save_record:
         env = wrappers.Monitor(
             env,
             directory=record_save_path,
-            video_callable=lambda count: (count) % 100 == 0,
+            video_callable=lambda count: (count) % 50 == 0,
             force=True
         )
-
-    agent = DQNAgent(
+    agent = DDPGAgent(
         lr=args.lr,
-        input_dims=input_dims,
-        n_actions=total_actions,
+        state_dims=state_dims,
+        action_dims=total_actions,
         env_name=args.env_name,
         ckpt_save_path=ckpt_save_path,
         gamma=0.99,
@@ -70,13 +69,15 @@ if __name__ == '__main__':
     )
 
     if args.mode == "resume":
-        agent.load_model(args.checkpoint)
-        logger.info(f" == model {args.checkpoint} loaded, continue to train")
-        agent.train(env, args.episodes)
+        # agent.load_model(args.checkpoint)
+        # logger.info(f" == model {args.checkpoint} loaded, continue to train")
+        # agent.train(env, args.episodes)
+        pass
     elif args.mode == "test":
-        agent.load_model(args.checkpoint, test=True)
-        logger.info(f" == model {args.checkpoint} loaded, start to test")
-        test_one_episode(agent, env)
+        # agent.load_model(args.checkpoint, test=True)
+        # logger.info(f" == model {args.checkpoint} loaded, start to test")
+        # test_one_episode(agent, env)
+        pass
     else:
         logger.info(f" == start to train from scratch")
         agent.train(env, args.episodes)
