@@ -48,7 +48,9 @@ if __name__ == '__main__':
         total_actions = env.action_space.shape[0]
 
     state_dims = env.observation_space.shape[0]
+    action_bound = env.action_space.high
     logger.info(f" == action space: {env.action_space}")
+    logger.info(f" == action bound: {env.action_space.high}")
     logger.info(f" == observation space: {env.observation_space}")
     if args.save_record:
         env = wrappers.Monitor(
@@ -63,6 +65,7 @@ if __name__ == '__main__':
         action_dims=total_actions,
         env_name=args.env_name,
         ckpt_save_path=ckpt_save_path,
+        action_bound=action_bound,
         gamma=0.99,
         fc1_dims=128,
         fc2_dims=128

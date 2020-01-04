@@ -53,7 +53,7 @@ class Critic(nn.Module):
 class OUNoise:
     """Ornstein-Uhlenbeck process."""
 
-    def __init__(self, size, mu=0., theta=0.2, sigma=0.2):
+    def __init__(self, size, mu=0., theta=0.15, sigma=0.2):
         """Initialize parameters and noise process."""
         self.mu = mu * np.ones(size)
         self.theta = theta
@@ -80,9 +80,10 @@ class DDPGAgent(object):
                  action_dims,
                  env_name,
                  ckpt_save_path,
+                 action_bound,
                  gamma=0.99,
-                 fc1_dims=512,
-                 fc2_dims=512):
+                 fc1_dims=256,
+                 fc2_dims=256):
         self.epsilon = 1.0
         self.gamma = gamma
         self.cur_episode = 0
@@ -98,6 +99,7 @@ class DDPGAgent(object):
         self.actor_target = Actor(state_dims, action_dims)
         self.critic_eval = Critic(state_dims, action_dims)
         self.critic_target = Critic(state_dims, action_dims)
+        self.action_bound = action_bound
         self.noise = OUNoise(action_dims)
 
         print(self.actor_eval)
@@ -133,7 +135,7 @@ class DDPGAgent(object):
         if add_noise:
             action += max(self.epsilon, EPSILON_FINAL) * self.noise.sample()
 
-        action = np.clip(action, -1.0, 1.0)
+        action = np.clip(action, -self.action_bound, self.action_bound)
         return action
 
     def choose_action(self, state):
