@@ -10,41 +10,40 @@ from gym import logger
 from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
-MEMORY_CAPACITY = 100000
-TARGET_UPDATE_ITER = 1000
-BATCH_SIZE = 64
-TAU = 0.001
-LR_ACTOR = 0.0001          # learning rate of the actor
+MEMORY_CAPACITY = 1000000
+MIN_STEP_TO_TRAIN = 10000
+BATCH_SIZE = 128
+TAU = 0.005
+LR_ACTOR = 0.0005          # learning rate of the actor
 LR_CRITIC = 0.001          # learning rate of the critic
-EPSILON_FINAL = 0.001
-EPSILON_DECAY = 0.001
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dims, action_dims, fc1_dims=256, fc2_dims=256):
+    def __init__(self, state_dims, action_dims, action_bound, fc1_dims=400, fc2_dims=300):
         super(Actor, self).__init__()
         self.fc1 = nn.Linear(state_dims, fc1_dims)
         self.fc2 = nn.Linear(fc1_dims, fc2_dims)
         self.fc3 = nn.Linear(fc2_dims, action_dims)
 
+        self.action_bound = action_bound
+
     def forward(self, state):
         x = F.relu(self.fc1(state))
         x = F.relu(self.fc2(x))
-        out = torch.tanh(self.fc3(x))
+        out = self.action_bound * torch.tanh(self.fc3(x))
         return out
 
 
 class Critic(nn.Module):
-    def __init__(self, state_dims, action_dims, fc1_dims=256, fc2_dims=256):
+    def __init__(self, state_dims, action_dims, fc1_dims=400, fc2_dims=300):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(state_dims, fc1_dims)
-        self.fc2 = nn.Linear(fc1_dims + action_dims, fc2_dims)
+        self.fc1 = nn.Linear(state_dims + action_dims, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
         self.fc3 = nn.Linear(fc2_dims, 1)
 
     def forward(self, state, action):
         """Build a critic (value) network that maps (state, action) pairs -> Q-values."""
-        s = F.relu((self.fc1(state)))
-        x = torch.cat((s, action), dim=1)
+        x = F.relu(self.fc1(torch.cat([state, action], 1)))
         x = F.relu(self.fc2(x))
         out = self.fc3(x)
         return out
@@ -82,8 +81,8 @@ class DDPGAgent(object):
                  ckpt_save_path,
                  action_bound,
                  gamma=0.99,
-                 fc1_dims=256,
-                 fc2_dims=256):
+                 fc1_dims=400,
+                 fc2_dims=300):
         self.epsilon = 1.0
         self.gamma = gamma
         self.cur_episode = 0
@@ -95,10 +94,11 @@ class DDPGAgent(object):
         self.env_name = env_name
         self.agent_name = f"DDPG_{env_name}"
         self.ckpt_save_path = ckpt_save_path
-        self.actor_eval = Actor(state_dims, action_dims)
-        self.actor_target = Actor(state_dims, action_dims)
+        self.actor_eval = Actor(state_dims, action_dims, action_bound)
+        self.actor_target = copy.deepcopy(self.actor_eval)
+
         self.critic_eval = Critic(state_dims, action_dims)
-        self.critic_target = Critic(state_dims, action_dims)
+        self.critic_target = copy.deepcopy(self.critic_eval)
         self.action_bound = action_bound
         self.noise = OUNoise(action_dims)
 
@@ -118,7 +118,7 @@ class DDPGAgent(object):
         self.actor_optimizer = optim.Adam(
             self.actor_eval.parameters(), lr=LR_ACTOR)
         self.critic_optimizer = optim.Adam(
-            self.critic_eval.parameters(), lr=LR_CRITIC, weight_decay=1e-4)
+            self.critic_eval.parameters(), lr=LR_CRITIC)
         self.actor_loss = nn.MSELoss()
         self.critic_loss = nn.MSELoss()
 
@@ -133,7 +133,9 @@ class DDPGAgent(object):
             action = self.actor_eval(state).cpu().data.numpy()
         self.actor_eval.train()
         if add_noise:
-            action += max(self.epsilon, EPSILON_FINAL) * self.noise.sample()
+            # action += self.noise.sample()
+            action += np.random.normal(0, self.action_bound *
+                                       0.01, size=self.action_dims)
 
         action = np.clip(action, -self.action_bound, self.action_bound)
         return action
@@ -169,9 +171,6 @@ class DDPGAgent(object):
             self.actor_eval.train()
         self.actor_target.load_state_dict(self.actor_eval.state_dict())
         self.critic_target.load_state_dict(self.critic_eval.state_dict())
-
-    def decay_epsilon(self):
-        self.epsilon -= EPSILON_DECAY
 
     def learn(self):
         batch_s, batch_a, batch_r, batch_t, batch_s_ = self.buffer.sample_batch(
@@ -231,10 +230,12 @@ class DDPGAgent(object):
             score = 0
             done = False
 
-            self.decay_epsilon()
-
             while not done:
-                action = self.act(state)
+                if total_step < MIN_STEP_TO_TRAIN:
+                    action = env.action_space.sample()
+                else:
+                    action = self.act(state)
+
                 state_, reward, done, _ = env.step(action)
                 total_step += 1
                 score += reward
@@ -251,7 +252,7 @@ class DDPGAgent(object):
             max_score = score if score > max_score else max_score
             self.score_history.append(score)
             logger.info(
-                f" == episode: {eps+1}, total step: {total_step}, score: {score}, max score: {max_score}")
+                f" == episode: {eps+1:05d} | total step: {total_step:7d} | score: {score:8.2f} | max score: {max_score:8.2f}")
 
             if (eps + 1) % 100 == 0:
                 ckpt_name = os.path.join(

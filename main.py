@@ -48,7 +48,7 @@ if __name__ == '__main__':
         total_actions = env.action_space.shape[0]
 
     state_dims = env.observation_space.shape[0]
-    action_bound = env.action_space.high
+    action_bound = float(env.action_space.high[0])
     logger.info(f" == action space: {env.action_space}")
     logger.info(f" == action bound: {env.action_space.high}")
     logger.info(f" == observation space: {env.observation_space}")
