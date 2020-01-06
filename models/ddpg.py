@@ -10,11 +10,11 @@ from gym import logger
 from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
-MEMORY_CAPACITY = 1000000
-MIN_STEP_TO_TRAIN = 10000
+MEMORY_CAPACITY = 250000
+MIN_STEP_TO_TRAIN = 7500
 BATCH_SIZE = 128
 TAU = 0.005
-LR_ACTOR = 0.0005          # learning rate of the actor
+LR_ACTOR = 0.001          # learning rate of the actor
 LR_CRITIC = 0.001          # learning rate of the critic
 
 
@@ -83,7 +83,6 @@ class DDPGAgent(object):
                  gamma=0.99,
                  fc1_dims=400,
                  fc2_dims=300):
-        self.epsilon = 1.0
         self.gamma = gamma
         self.cur_episode = 0
         self.learn_iterations = 0
