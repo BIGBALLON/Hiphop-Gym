@@ -11,68 +11,65 @@ from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
 MEMORY_CAPACITY = 500000
-MIN_STEP_TO_TRAIN = 7500
+MIN_STEP_TO_TRAIN = 20000
 BATCH_SIZE = 128
 TAU = 0.005
-LR_ACTOR = 0.001          # learning rate of the actor
-LR_CRITIC = 0.001          # learning rate of the critic
+LR_ACTOR = 0.00025          # learning rate of the actor
+LR_CRITIC = 0.00025          # learning rate of the critic
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dims, action_dims, action_bound, fc1_dims=400, fc2_dims=300):
+    def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
-        self.fc1 = nn.Linear(state_dims, fc1_dims)
-        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
-        self.fc3 = nn.Linear(fc2_dims, action_dims)
 
-        self.action_bound = action_bound
+        self.l1 = nn.Linear(state_dim, 256)
+        self.l2 = nn.Linear(256, 256)
+        self.l3 = nn.Linear(256, action_dim)
+
+        self.max_action = max_action
 
     def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        out = self.action_bound * torch.tanh(self.fc3(x))
-        return out
+        a = F.relu(self.l1(state))
+        a = F.relu(self.l2(a))
+        return self.max_action * torch.tanh(self.l3(a))
 
 
 class Critic(nn.Module):
-    def __init__(self, state_dims, action_dims, fc1_dims=400, fc2_dims=300):
+    def __init__(self, state_dim, action_dim):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(state_dims + action_dims, fc1_dims)
-        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
-        self.fc3 = nn.Linear(fc2_dims, 1)
+
+        # Q1 architecture
+        self.l1 = nn.Linear(state_dim + action_dim, 256)
+        self.l2 = nn.Linear(256, 256)
+        self.l3 = nn.Linear(256, 1)
+
+        # Q2 architecture
+        self.l4 = nn.Linear(state_dim + action_dim, 256)
+        self.l5 = nn.Linear(256, 256)
+        self.l6 = nn.Linear(256, 1)
 
     def forward(self, state, action):
-        """Build a critic (value) network that maps (state, action) pairs -> Q-values."""
-        x = F.relu(self.fc1(torch.cat([state, action], 1)))
-        x = F.relu(self.fc2(x))
-        out = self.fc3(x)
-        return out
+        sa = torch.cat([state, action], 1)
+
+        q1 = F.relu(self.l1(sa))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+
+        q2 = F.relu(self.l4(sa))
+        q2 = F.relu(self.l5(q2))
+        q2 = self.l6(q2)
+        return q1, q2
+
+    def Q1(self, state, action):
+        sa = torch.cat([state, action], 1)
+
+        q1 = F.relu(self.l1(sa))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+        return q1
 
 
-class OUNoise:
-    """Ornstein-Uhlenbeck process."""
-
-    def __init__(self, size, mu=0., theta=0.15, sigma=0.2):
-        """Initialize parameters and noise process."""
-        self.mu = mu * np.ones(size)
-        self.theta = theta
-        self.sigma = sigma
-        self.reset()
-
-    def reset(self):
-        """Reset the internal state (= noise) to mean (mu)."""
-        self.state = copy.copy(self.mu)
-
-    def sample(self):
-        """Update internal state and return it as a noise sample."""
-        x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * \
-            np.array([random.random() for i in range(len(x))])
-        self.state = x + dx
-        return self.state
-
-
-class DDPGAgent(object):
+class TD3Agent(object):
     def __init__(self,
                  lr,
                  state_dims,
@@ -81,8 +78,11 @@ class DDPGAgent(object):
                  ckpt_save_path,
                  action_bound,
                  gamma=0.99,
-                 fc1_dims=400,
-                 fc2_dims=300):
+                 fc1_dims=256,
+                 fc2_dims=256,
+                 policy_noise=0.2,
+                 noise_clip=0.5,
+                 policy_freq=2):
         self.gamma = gamma
         self.cur_episode = 0
         self.learn_iterations = 0
@@ -91,7 +91,7 @@ class DDPGAgent(object):
         self.action_dims = action_dims
         self.state_dims = state_dims
         self.env_name = env_name
-        self.agent_name = f"DDPG_{env_name}"
+        self.agent_name = f"TD3_{env_name}"
         self.ckpt_save_path = ckpt_save_path
         self.actor_eval = Actor(state_dims, action_dims, action_bound)
         self.actor_target = copy.deepcopy(self.actor_eval)
@@ -99,7 +99,6 @@ class DDPGAgent(object):
         self.critic_eval = Critic(state_dims, action_dims)
         self.critic_target = copy.deepcopy(self.critic_eval)
         self.action_bound = action_bound
-        self.noise = OUNoise(action_dims)
 
         print(self.actor_eval)
         print(self.critic_eval)
@@ -121,6 +120,11 @@ class DDPGAgent(object):
         self.actor_loss = nn.MSELoss()
         self.critic_loss = nn.MSELoss()
 
+        self.policy_noise = policy_noise
+        self.noise_clip = noise_clip
+        self.policy_freq = policy_freq
+        self.total_it = 0
+
     def __str__(self):
         return self.agent_name
 
@@ -131,7 +135,7 @@ class DDPGAgent(object):
         if add_noise:
             # action += self.noise.sample()
             action += np.random.normal(0, self.action_bound *
-                                       0.01, size=self.action_dims)
+                                       0.1, size=self.action_dims)
 
         action = np.clip(action, -self.action_bound, self.action_bound)
         return action
@@ -172,38 +176,56 @@ class DDPGAgent(object):
         batch_s, batch_a, batch_r, batch_t, batch_s_ = self.buffer.sample_batch(
             BATCH_SIZE)
 
+        self.total_it += 1
+
         batch_s = torch.Tensor(batch_s).to(self.device)
         batch_a = torch.Tensor(batch_a).to(self.device)
         batch_r = torch.Tensor(batch_r).to(self.device).view((-1, 1))
         batch_t = torch.Tensor(batch_t).to(self.device).view((-1, 1))
         batch_s_ = torch.Tensor(batch_s_).to(self.device)
 
-        # ---------------------------- update critic ---------------------------- #
-        # Get predicted next-state actions and Q values from target models
-        actions_next = self.actor_target(batch_s_)
-        Q_targets_next = self.critic_target(batch_s_, actions_next)
-        # Compute Q targets for current states (y_i)
-        Q_targets = batch_r + (self.gamma * Q_targets_next * (1 - batch_t))
+        with torch.no_grad():
+            # Select action according to policy and add clipped noise
+            noise = (
+                torch.randn_like(batch_a) * self.policy_noise
+            ).clamp(-self.noise_clip, self.noise_clip)
+
+            next_action = (
+                self.actor_target(batch_s_) + noise
+            ).clamp(-self.action_bound, self.action_bound)
+
+            # Compute the target Q value
+            target_Q1, target_Q2 = self.critic_target(batch_s_, next_action)
+            target_Q = torch.min(target_Q1, target_Q2)
+            target_Q = batch_r + batch_t * self.gamma * target_Q
+
+        # Get current Q estimates
+        current_Q1, current_Q2 = self.critic_eval(batch_s, batch_a)
+
         # Compute critic loss
-        Q_expected = self.critic_eval(batch_s, batch_a)
-        critic_loss = F.mse_loss(Q_expected, Q_targets)
-        # Minimize the loss
+        critic_loss = F.mse_loss(current_Q1, target_Q) + \
+            F.mse_loss(current_Q2, target_Q)
+
+        # Optimize the critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # ---------------------------- update actor ---------------------------- #
-        # Compute actor loss
-        actions_pred = self.actor_eval(batch_s)
-        actor_loss = -self.critic_eval(batch_s, actions_pred).mean()
-        # Minimize the loss
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
+        # Delayed policy updates
+        if self.total_it % self.policy_freq == 0:
 
-        # ----------------------- update target networks ----------------------- #
-        self.soft_update(self.critic_eval, self.critic_target, TAU)
-        self.soft_update(self.actor_eval, self.actor_target, TAU)
+            # Compute actor losse
+            actor_loss = - \
+                self.critic_eval.Q1(batch_s, self.actor_eval(batch_s)).mean()
+
+            # Optimize the actor
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            # Update the frozen target models
+            self.soft_update(self.critic_eval, self.critic_target, TAU)
+            self.soft_update(self.actor_eval, self.actor_target, TAU)
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
