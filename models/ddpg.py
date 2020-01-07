@@ -11,7 +11,7 @@ from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
 MEMORY_CAPACITY = 500000
-MIN_STEP_TO_TRAIN = 50000
+MIN_STEP_TO_TRAIN = 5000
 BATCH_SIZE = 64
 TAU = 0.001
 LR_ACTOR = 0.0005          # learning rate of the actor
@@ -237,7 +237,7 @@ class DDPGAgent(object):
                 )
                 self.buffer.add(state, action, reward, done, state_)
 
-                if self.buffer.size > BATCH_SIZE:
+                if self.buffer.size > MIN_STEP_TO_TRAIN:
                     self.learn()
 
                 state = state_

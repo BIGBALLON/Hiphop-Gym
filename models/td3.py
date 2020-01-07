@@ -14,8 +14,8 @@ MEMORY_CAPACITY = 500000
 MIN_STEP_TO_TRAIN = 10000
 BATCH_SIZE = 128
 TAU = 0.005
-LR_ACTOR = 0.00025          # learning rate of the actor
-LR_CRITIC = 0.00025          # learning rate of the critic
+LR_ACTOR = 0.0001          # learning rate of the actor
+LR_CRITIC = 0.0001         # learning rate of the critic
 
 
 class Actor(nn.Module):
@@ -262,7 +262,7 @@ class TD3Agent(object):
                 )
                 self.buffer.add(state, action, reward, done, state_)
 
-                if self.buffer.size > BATCH_SIZE:
+                if self.buffer.size > MIN_STEP_TO_TRAIN:
                     self.learn()
 
                 state = state_
