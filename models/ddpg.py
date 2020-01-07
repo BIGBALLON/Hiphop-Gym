@@ -11,11 +11,29 @@ from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
 MEMORY_CAPACITY = 500000
-MIN_STEP_TO_TRAIN = 7500
-BATCH_SIZE = 128
-TAU = 0.005
-LR_ACTOR = 0.001          # learning rate of the actor
+MIN_STEP_TO_TRAIN = 50000
+BATCH_SIZE = 64
+TAU = 0.001
+LR_ACTOR = 0.0005          # learning rate of the actor
 LR_CRITIC = 0.001          # learning rate of the critic
+
+
+class OUNoise:
+    def __init__(self, n_actions, mu=0, theta=0.15, sigma=0.2):
+        self.n_actions = n_actions
+        self.X = np.ones(n_actions) * mu
+        self.mu = mu
+        self.sigma = sigma
+        self.theta = theta
+
+    def reset(self):
+        self.X = np.ones(self.n_actions) * self.mu
+
+    def sample(self):
+        dX = self.theta * (self.mu - self.X)
+        dX += self.sigma * np.random.randn(self.n_actions)
+        self.X += dX
+        return self.X
 
 
 class Actor(nn.Module):
@@ -49,29 +67,6 @@ class Critic(nn.Module):
         return out
 
 
-class OUNoise:
-    """Ornstein-Uhlenbeck process."""
-
-    def __init__(self, size, mu=0., theta=0.15, sigma=0.2):
-        """Initialize parameters and noise process."""
-        self.mu = mu * np.ones(size)
-        self.theta = theta
-        self.sigma = sigma
-        self.reset()
-
-    def reset(self):
-        """Reset the internal state (= noise) to mean (mu)."""
-        self.state = copy.copy(self.mu)
-
-    def sample(self):
-        """Update internal state and return it as a noise sample."""
-        x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * \
-            np.array([random.random() for i in range(len(x))])
-        self.state = x + dx
-        return self.state
-
-
 class DDPGAgent(object):
     def __init__(self,
                  lr,
@@ -99,7 +94,7 @@ class DDPGAgent(object):
         self.critic_eval = Critic(state_dims, action_dims)
         self.critic_target = copy.deepcopy(self.critic_eval)
         self.action_bound = action_bound
-        self.noise = OUNoise(action_dims)
+        self.noise = OUNoise(self.action_dims)
 
         print(self.actor_eval)
         print(self.critic_eval)
@@ -127,11 +122,13 @@ class DDPGAgent(object):
     def act(self, state, add_noise=True):
         """Returns actions for given state as per current policy."""
         state = torch.tensor(state).float().to(self.device)
-        action = self.actor_eval(state).cpu().data.numpy()
+        self.actor_eval.eval()
+        with torch.no_grad():
+            action = self.actor_eval(state).cpu().data.numpy()
+        self.actor_eval.train()
+
         if add_noise:
-            # action += self.noise.sample()
-            action += np.random.normal(0, self.action_bound *
-                                       0.01, size=self.action_dims)
+            action += self.action_bound * self.noise.sample()
 
         action = np.clip(action, -self.action_bound, self.action_bound)
         return action

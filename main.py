@@ -57,7 +57,7 @@ if __name__ == '__main__':
             video_callable=lambda count: (count) % 50 == 0,
             force=True
         )
-    agent = TD3Agent(
+    agent = DDPGAgent(
         lr=args.lr,
         state_dims=state_dims,
         action_dims=total_actions,

@@ -11,7 +11,7 @@ from .utils import check_reward, plot_figure, weight_init
 from .utils import ReplayBuffer
 
 MEMORY_CAPACITY = 500000
-MIN_STEP_TO_TRAIN = 20000
+MIN_STEP_TO_TRAIN = 10000
 BATCH_SIZE = 128
 TAU = 0.005
 LR_ACTOR = 0.00025          # learning rate of the actor
